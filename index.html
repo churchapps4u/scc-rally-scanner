@@ -124,6 +124,22 @@
       </select>
     </div>
 
+    <div id="mealWrap" style="display:none;">
+  <label>Meal</label>
+  <select id="meal">
+    <option value="Thursday Lunch">Thursday Lunch</option>
+    <option value="Thursday Dinner">Thursday Dinner</option>
+    <option value="Friday Breakfast">Friday Breakfast</option>
+    <option value="Friday Lunch">Friday Lunch</option>
+    <option value="Friday Dinner">Friday Dinner</option>
+    <option value="Saturday Breakfast">Saturday Breakfast</option>
+    <option value="Saturday Lunch">Saturday Lunch</option>
+    <option value="Saturday Dinner">Saturday Dinner</option>
+    <option value="Sunday Breakfast">Sunday Breakfast</option>
+    <option value="Sunday Lunch">Sunday Lunch</option>
+  </select>
+</div>
+
     <button onclick="startCamera()">Start Camera Scanner</button>
     <button onclick="stopCamera()">Stop Camera Scanner</button>
 
@@ -146,10 +162,17 @@
   let isProcessing = false;
 
   function handleStationChange() {
-    const station = document.getElementById('station').value;
-    document.getElementById('seminarWrap').style.display = station === 'Seminar' ? 'block' : 'none';
-    localStorage.setItem('SCC_SCANNER_STATION', station);
-  }
+  const station = document.getElementById('station').value;
+
+  document.getElementById('seminarWrap').style.display = station === 'Seminar' ? 'block' : 'none';
+  document.getElementById('mealWrap').style.display = station === 'Meal' ? 'block' : 'none';
+
+  localStorage.setItem('SCC_SCANNER_STATION', station);
+}
+
+  function getMeal() {
+  return document.getElementById('meal').value;
+}
 
   function restoreStation() {
     const saved = localStorage.getItem('SCC_SCANNER_STATION');
@@ -176,7 +199,9 @@
     isProcessing = true;
 
     const station = getStation();
-    const seminar = station === 'Seminar' ? getSeminar() : '';
+    const seminar = station === 'Seminar'
+  ? getSeminar()
+  : (station === 'Meal' ? getMeal() : '');
 
     showProcessing();
 
