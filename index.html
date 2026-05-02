@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SCC Rally Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f7f7f7;
+      color: #222;
+      padding: 16px;
+    }
+    .card {
+      max-width: 760px;
+      margin: 0 auto;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 16px;
+      padding: 18px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 26px;
+    }
+    label {
+      font-weight: bold;
+      margin-top: 12px;
+      display: block;
+    }
+    select, input, button {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 14px;
+      margin-top: 8px;
+      font-size: 18px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+    }
+    button {
+      font-weight: bold;
+      cursor: pointer;
+    }
+    #reader {
+      width: 100%;
+      max-width: 430px;
+      margin: 14px auto;
+      display: none;
+    }
+    .result {
+      margin-top: 18px;
+      padding: 20px;
+      border-radius: 14px;
+      font-size: 23px;
+      font-weight: bold;
+      text-align: center;
+    }
+    .success {
+      background: #d9ead3;
+      color: #245b24;
+    }
+    .already {
+      background: #fff2cc;
+      color: #7a5c00;
+    }
+    .error {
+      background: #f4cccc;
+      color: #8a1c1c;
+    }
+    .info {
+      margin-top: 12px;
+      font-size: 16px;
+      font-weight: normal;
+    }
+    #flashOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 160, 60, 0.92);
+      color: white;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 42px;
+      font-weight: bold;
+      z-index: 9999;
+      text-align: center;
+      padding: 20px;
+    }
+    .small {
+      font-size: 13px;
+      color: #666;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="flashOverlay"></div>
+
+  <div class="card">
+    <h1>📍 SCC Rally Scanner</h1>
+    <div class="small">Select station, start camera, then scan attendee QR.</div>
+
+    <label>Station</label>
+    <select id="station" onchange="handleStationChange()">
+      <option value="Thursday">Thursday Attendance</option>
+      <option value="Saturday">Saturday Attendance</option>
+      <option value="Sunday">Sunday Attendance</option>
+      <option value="Package">Package Collection</option>
+      <option value="Meal">Meal Collection</option>
+      <option value="Seminar">Seminar Check-In</option>
+    </select>
+
+    <div id="seminarWrap" style="display:none;">
+      <label>Seminar</label>
+      <select id="seminar">
+        <option value="Contemporary Preaching">Contemporary Preaching</option>
+        <option value="Topical Preaching">Topical Preaching</option>
+        <option value="Narrative Preaching">Narrative Preaching</option>
+        <option value="Evangelistic Preaching">Evangelistic Preaching</option>
+        <option value="Expository Preaching">Expository Preaching</option>
+        <option value="Lay Bible Work">Lay Bible Work</option>
+        <option value="Sabbath School Seminars">Sabbath School Seminars</option>
+      </select>
+    </div>
+
+    <button onclick="startCamera()">Start Camera Scanner</button>
+    <button onclick="stopCamera()">Stop Camera Scanner</button>
+
+    <div id="reader"></div>
+
+    <label>Manual / fallback scan input</label>
+    <input id="manualInput" placeholder="Paste QR URL or registration ID">
+    <button onclick="processManual()">Process Manual Scan</button>
+
+    <div id="result"></div>
+  </div>
+
+<script>
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjnWbefklUP0lXdk5G8qKbi8mf-oXtIVwlLrknZWYJ4rCEFFRCmfizwiVZPMSIRZJb/exec";
+  const API_KEY = "scc-rally-2026-cam-v_1_02052026";
+  const RESET_SECONDS = 15;
+
+  let html5QrCode = null;
+  let cameraRunning = false;
+  let isProcessing = false;
+
+  function handleStationChange() {
+    const station = document.getElementById('station').value;
+    document.getElementById('seminarWrap').style.display = station === 'Seminar' ? 'block' : 'none';
+    localStorage.setItem('SCC_SCANNER_STATION', station);
+  }
+
+  function restoreStation() {
+    const saved = localStorage.getItem('SCC_SCANNER_STATION');
+    if (saved) document.getElementById('station').value = saved;
+    handleStationChange();
+  }
+
+  function getStation() {
+    return document.getElementById('station').value;
+  }
+
+  function getSeminar() {
+    return document.getElementById('seminar').value;
+  }
+
+  function processManual() {
+    const value = document.getElementById('manualInput').value.trim();
+    if (!value) return;
+    processScan(value);
+  }
+
+  async function processScan(decodedText) {
+    if (isProcessing) return;
+    isProcessing = true;
+
+    const station = getStation();
+    const seminar = station === 'Seminar' ? getSeminar() : '';
+
+    showProcessing();
+
+    try {
+      const response = await fetch(APPS_SCRIPT_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          apiKey: API_KEY,
+          scanInput: decodedText,
+          station: station,
+          seminar: seminar
+        })
+      });
+
+      const data = await response.json();
+      showResult(data);
+    } catch (err) {
+      showResult({
+        ok: false,
+        status: "error",
+        message: "Unable to reach registration system: " + err.message,
+        record: null,
+        resetSeconds: RESET_SECONDS
+      });
+    }
+
+    setTimeout(() => {
+      resetScreen();
+      isProcessing = false;
+      if (cameraRunning) {
+        // keep scanner ready
+      }
+    }, RESET_SECONDS * 1000);
+  }
+
+  function showProcessing() {
+    document.getElementById('result').innerHTML = `
+      <div class="result already">Processing scan...</div>
+    `;
+  }
+
+  function showResult(res) {
+    const status = res.status || (res.ok ? 'success' : 'error');
+    const cls = status === 'success' ? 'success' : (status === 'already' ? 'already' : 'error');
+
+    if (status === 'success') {
+      playBeep('success');
+      showFlash('SCAN SUCCESS', 'success');
+    } else if (status === 'already') {
+      playBeep('already');
+      showFlash('ALREADY SCANNED', 'already');
+    } else {
+      playBeep('error');
+      showFlash('SCAN ERROR', 'error');
+    }
+
+    const record = res.record || {};
+    const name = ((record['First Name'] || '') + ' ' + (record['Last Name'] || '')).trim();
+    const church = record['Name of Church'] || '';
+    const regId = record['Registration ID'] || '';
+
+    document.getElementById('result').innerHTML = `
+      <div class="result ${cls}">
+        ${res.message || 'Scan processed.'}
+        <div class="info">
+          ${name ? `<div><strong>${name}</strong></div>` : ''}
+          ${church ? `<div>${church}</div>` : ''}
+          ${regId ? `<div>ID: ${regId}</div>` : ''}
+          <div>Ready again in ${res.resetSeconds || RESET_SECONDS} seconds...</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function resetScreen() {
+    document.getElementById('result').innerHTML = '';
+    document.getElementById('manualInput').value = '';
+  }
+
+  function showFlash(text, type) {
+    const overlay = document.getElementById('flashOverlay');
+
+    if (type === 'success') overlay.style.background = 'rgba(0, 160, 60, 0.92)';
+    else if (type === 'already') overlay.style.background = 'rgba(230, 165, 0, 0.92)';
+    else overlay.style.background = 'rgba(190, 0, 0, 0.92)';
+
+    overlay.textContent = text;
+    overlay.style.display = 'flex';
+
+    setTimeout(() => {
+      overlay.style.display = 'none';
+    }, 1200);
+  }
+
+  function playBeep(type) {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+
+      oscillator.type = 'sine';
+      oscillator.frequency.value = type === 'success' ? 880 : (type === 'already' ? 520 : 220);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + 0.18);
+    } catch (err) {}
+  }
+
+  function startCamera() {
+    const reader = document.getElementById('reader');
+    reader.style.display = 'block';
+
+    if (typeof Html5Qrcode === 'undefined') {
+      alert('QR scanner library did not load. Check internet connection.');
+      return;
+    }
+
+    if (!html5QrCode) {
+      html5QrCode = new Html5Qrcode("reader");
+    }
+
+    if (cameraRunning) return;
+
+    Html5Qrcode.getCameras()
+      .then(cameras => {
+        if (!cameras || !cameras.length) {
+          alert('No camera found.');
+          return;
+        }
+
+        const backCamera = cameras.find(camera => /back|rear|environment/i.test(camera.label));
+        const cameraId = backCamera ? backCamera.id : cameras[0].id;
+
+        return html5QrCode.start(
+          cameraId,
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          decodedText => {
+            if (!isProcessing) {
+              processScan(decodedText);
+            }
+          },
+          errorMessage => {}
+        );
+      })
+      .then(() => {
+        cameraRunning = true;
+      })
+      .catch(err => {
+        cameraRunning = false;
+        reader.style.display = 'none';
+        alert('Unable to start camera scanner: ' + (err && err.message ? err.message : err));
+      });
+  }
+
+  function stopCamera() {
+    const reader = document.getElementById('reader');
+
+    if (html5QrCode && cameraRunning) {
+      html5QrCode.stop()
+        .then(() => {
+          cameraRunning = false;
+          reader.style.display = 'none';
+        })
+        .catch(() => {
+          cameraRunning = false;
+          reader.style.display = 'none';
+        });
+    } else {
+      reader.style.display = 'none';
+      cameraRunning = false;
+    }
+  }
+
+  restoreStation();
+</script>
+</body>
+</html>
