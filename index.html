@@ -115,7 +115,7 @@
   <div class="card" id="scannerCard" style="display:none;">
     <h1>📍 SCC Rally Scanner</h1>
     <div class="small" id="loggedInAs"></div>
-    <button onclick="logoutScanner()">Logout</button>
+    
 
     <label>Station</label>
     <select id="station" onchange="handleStationChange()">
@@ -164,6 +164,10 @@
     <label>Manual / fallback scan input</label>
     <input id="manualInput" placeholder="Paste QR URL or registration ID">
     <button onclick="processManual()">Process Manual Scan</button>
+
+    <button onclick="logoutScanner()" style="margin-top:24px;background:#f4cccc;">
+  Logout
+</button>
 
     <div id="result"></div>
   </div>
@@ -455,10 +459,12 @@ const params = new URLSearchParams({
   }
 }
 
-function saveScannerUser(username, pin) {
+function saveScannerUser(username, pin, displayName, role) {
   localStorage.setItem('SCC_SCANNER_USER', JSON.stringify({
     username: username,
-    pin: pin
+    pin: pin,
+    displayName: displayName || username,
+    role: role || 'Scanner'
   }));
 }
 
@@ -466,7 +472,7 @@ function clearScannerUser() {
   localStorage.removeItem('SCC_SCANNER_USER');
 }
 
-function loginScanner() {
+async function loginScanner() {
   const username = document.getElementById('loginUsername').value.trim();
   const pin = document.getElementById('loginPin').value.trim();
 
@@ -476,8 +482,25 @@ function loginScanner() {
     return;
   }
 
-  saveScannerUser(username, pin);
-  showScanner();
+  document.getElementById('loginResult').innerHTML =
+    '<div class="result already">Checking login...</div>';
+
+  try {
+    const data = await callLoginJsonp(username, pin);
+
+    if (!data.ok) {
+      document.getElementById('loginResult').innerHTML =
+        '<div class="result error">' + (data.message || 'Login failed.') + '</div>';
+      return;
+    }
+
+    saveScannerUser(username, pin, data.user.displayName, data.user.role);
+    showScanner();
+
+  } catch (err) {
+    document.getElementById('loginResult').innerHTML =
+      '<div class="result error">Unable to validate login: ' + err.message + '</div>';
+  }
 }
 
 function logoutScanner() {
@@ -503,9 +526,41 @@ function showScanner() {
   document.getElementById('loginCard').style.display = 'none';
   document.getElementById('scannerCard').style.display = 'block';
   document.getElementById('loggedInAs').innerHTML =
-    'Logged in as: <strong>' + user.username + '</strong>';
+  'Logged in as: <strong>' + (user.displayName || user.username) + '</strong>';
 
   showScanner();
+}
+
+  function callLoginJsonp(username, pin) {
+  return new Promise((resolve, reject) => {
+    const callbackName = 'jsonpLoginCallback_' + Date.now();
+
+    window[callbackName] = function(data) {
+      delete window[callbackName];
+      script.remove();
+      resolve(data);
+    };
+
+    const params = new URLSearchParams({
+      mode: 'api',
+      apiAction: 'login',
+      callback: callbackName,
+      apiKey: API_KEY,
+      username: username,
+      pin: pin
+    });
+
+    const script = document.createElement('script');
+    script.src = APPS_SCRIPT_URL + '?' + params.toString();
+
+    script.onerror = function() {
+      delete window[callbackName];
+      script.remove();
+      reject(new Error('Unable to reach login service.'));
+    };
+
+    document.body.appendChild(script);
+  });
 }
 </script>
 </body>
