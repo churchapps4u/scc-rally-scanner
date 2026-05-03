@@ -97,9 +97,25 @@
 <body>
   <div id="flashOverlay"></div>
 
-  <div class="card">
+  <div class="card" id="loginCard">
+    <h1>🔐 SCC Rally Scanner Login</h1>
+    <div class="small">Enter your assigned username and PIN to begin scanning.</div>
+
+    <label>Username</label>
+    <input id="loginUsername" placeholder="Username">
+
+    <label>PIN</label>
+    <input id="loginPin" placeholder="PIN" type="password">
+
+    <button onclick="loginScanner()">Login</button>
+
+    <div id="loginResult"></div>
+  </div>
+
+  <div class="card" id="scannerCard" style="display:none;">
     <h1>📍 SCC Rally Scanner</h1>
-    <div class="small">Select station, start camera, then scan attendee QR.</div>
+    <div class="small" id="loggedInAs"></div>
+    <button onclick="logoutScanner()">Logout</button>
 
     <label>Station</label>
     <select id="station" onchange="handleStationChange()">
@@ -125,20 +141,20 @@
     </div>
 
     <div id="mealWrap" style="display:none;">
-  <label>Meal</label>
-  <select id="meal">
-    <option value="Thursday Lunch">Thursday Lunch</option>
-    <option value="Thursday Dinner">Thursday Dinner</option>
-    <option value="Friday Breakfast">Friday Breakfast</option>
-    <option value="Friday Lunch">Friday Lunch</option>
-    <option value="Friday Dinner">Friday Dinner</option>
-    <option value="Saturday Breakfast">Saturday Breakfast</option>
-    <option value="Saturday Lunch">Saturday Lunch</option>
-    <option value="Saturday Dinner">Saturday Dinner</option>
-    <option value="Sunday Breakfast">Sunday Breakfast</option>
-    <option value="Sunday Lunch">Sunday Lunch</option>
-  </select>
-</div>
+      <label>Meal</label>
+      <select id="meal">
+        <option value="Thursday Lunch">Thursday Lunch</option>
+        <option value="Thursday Dinner">Thursday Dinner</option>
+        <option value="Friday Breakfast">Friday Breakfast</option>
+        <option value="Friday Lunch">Friday Lunch</option>
+        <option value="Friday Dinner">Friday Dinner</option>
+        <option value="Saturday Breakfast">Saturday Breakfast</option>
+        <option value="Saturday Lunch">Saturday Lunch</option>
+        <option value="Saturday Dinner">Saturday Dinner</option>
+        <option value="Sunday Breakfast">Sunday Breakfast</option>
+        <option value="Sunday Lunch">Sunday Lunch</option>
+      </select>
+    </div>
 
     <button onclick="startCamera()">Start Camera Scanner</button>
     <button onclick="stopCamera()">Stop Camera Scanner</button>
@@ -397,14 +413,23 @@
       resolve(data);
     };
 
-    const params = new URLSearchParams({
-      mode: 'api',
-      callback: callbackName,
-      apiKey: API_KEY,
-      scanInput: scanInput,
-      station: station,
-      seminar: seminar || ''
-    });
+    const user = getSavedScannerUser();
+
+if (!user) {
+  reject(new Error('No scanner user logged in.'));
+  return;
+}
+
+const params = new URLSearchParams({
+  mode: 'api',
+  callback: callbackName,
+  apiKey: API_KEY,
+  username: user.username,
+  pin: user.pin,
+  scanInput: scanInput,
+  station: station,
+  seminar: seminar || ''
+});
 
     const script = document.createElement('script');
     script.src = APPS_SCRIPT_URL + '?' + params.toString();
@@ -417,6 +442,70 @@
 
     document.body.appendChild(script);
   });
+}
+
+  function getSavedScannerUser() {
+  const raw = localStorage.getItem('SCC_SCANNER_USER');
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveScannerUser(username, pin) {
+  localStorage.setItem('SCC_SCANNER_USER', JSON.stringify({
+    username: username,
+    pin: pin
+  }));
+}
+
+function clearScannerUser() {
+  localStorage.removeItem('SCC_SCANNER_USER');
+}
+
+function loginScanner() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const pin = document.getElementById('loginPin').value.trim();
+
+  if (!username || !pin) {
+    document.getElementById('loginResult').innerHTML =
+      '<div class="result error">Please enter username and PIN.</div>';
+    return;
+  }
+
+  saveScannerUser(username, pin);
+  showScanner();
+}
+
+function logoutScanner() {
+  clearScannerUser();
+  stopCamera();
+  document.getElementById('scannerCard').style.display = 'none';
+  document.getElementById('loginCard').style.display = 'block';
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPin').value = '';
+  document.getElementById('loginResult').innerHTML = '';
+  document.getElementById('result').innerHTML = '';
+}
+
+function showScanner() {
+  const user = getSavedScannerUser();
+
+  if (!user) {
+    document.getElementById('loginCard').style.display = 'block';
+    document.getElementById('scannerCard').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('loginCard').style.display = 'none';
+  document.getElementById('scannerCard').style.display = 'block';
+  document.getElementById('loggedInAs').innerHTML =
+    'Logged in as: <strong>' + user.username + '</strong>';
+
+  showScanner();
 }
 </script>
 </body>
